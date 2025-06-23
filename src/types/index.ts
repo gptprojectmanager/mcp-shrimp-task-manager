@@ -51,6 +51,9 @@ export interface Task {
 
   // 新增欄位：保存驗證標準和檢驗方法
   verificationCriteria?: string; // 明確的驗證標準、測試要點和驗收條件
+  
+  // 任務完成元數據：保存辯論協議分析結果和完成詳情
+  completionMetadata?: TaskCompletionMetadata; // 完成元數據（辯論分析結果）
 }
 
 // 任務複雜度級別：定義任務的複雜程度分類
@@ -91,4 +94,54 @@ export interface TaskComplexityAssessment {
     hasNotes: boolean; // 是否有注記
   };
   recommendations: string[]; // 處理建議列表
+}
+
+// Prover-Estimator 辯論評分介面
+export interface DebateScoreBreakdown {
+  proverScore: number; // 支持方評分 (0-100)
+  estimatorScore: number; // 評估方評分 (0-100)
+  consensusPoints: string[]; // 雙方共識點
+  conflicts: string[]; // 爭議點
+  resolutionJustification: string; // 解決方案說明
+  honestEquilibriumScore: number; // 誠實均衡評分 (0-100)
+}
+
+// 防混淆驗證結果
+export interface AntiObfuscationResult {
+  evidenceConsistency: number; // 證據一致性分數 (0-100)
+  manipulationRisk: 'LOW' | 'MEDIUM' | 'HIGH'; // 操縱風險等級
+  truthfulnessIndicators: string[]; // 真實性指標
+  suspiciousPatterns: string[]; // 可疑模式
+}
+
+// 辯論協議驗證參數
+export interface DebateVerificationParams {
+  enableDebateProtocol: boolean; // 是否啟用辯論協議
+  debateIntensity: 'LIGHT' | 'MODERATE' | 'RIGOROUS'; // 辯論強度
+  antiObfuscationEnabled: boolean; // 是否啟用防混淆檢查
+  debateScoreBreakdown?: DebateScoreBreakdown; // 辯論評分詳情
+  antiObfuscationResult?: AntiObfuscationResult; // 防混淆驗證結果
+}
+
+// 任務完成元數據
+export interface TaskCompletionMetadata {
+  completionTimestamp: number; // 完成時間戳
+  verificationMethod: 'STANDARD' | 'DEBATE_PROTOCOL'; // 驗證方法
+  finalScore: number; // 最終分數
+  originalScore: number; // 原始分數
+  debateAnalysis?: {
+    proverScore: number;
+    estimatorScore: number;
+    consensusPoints: string[];
+    conflicts: string[];
+    honestEquilibriumScore: number;
+  };
+  antiObfuscationAnalysis?: {
+    evidenceConsistency: number;
+    manipulationRisk: 'LOW' | 'MEDIUM' | 'HIGH';
+    suspiciousPatterns: string[];
+    truthfulnessIndicators: string[];
+  };
+  completionConfidence: 'LOW' | 'MEDIUM' | 'HIGH'; // 完成信心度
+  recommendations: string[]; // 建議和洞察
 }
