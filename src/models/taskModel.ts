@@ -6,6 +6,7 @@ import {
   TaskComplexityThresholds,
   TaskComplexityAssessment,
   RelatedFile,
+  TaskCompletionMetadata,
 } from "../types/index.js";
 import fs from "fs/promises";
 import path from "path";
@@ -163,6 +164,27 @@ export async function updateTaskSummary(
   summary: string
 ): Promise<Task | null> {
   return await updateTask(taskId, { summary });
+}
+
+// 更新任務完成元數據
+export async function updateTaskCompletionMetadata(
+  taskId: string,
+  metadata: TaskCompletionMetadata
+): Promise<Task | null> {
+  return await updateTask(taskId, { completionMetadata: metadata });
+}
+
+// 綜合更新任務摘要和完成元數據
+export async function updateTaskWithDebateResults(
+  taskId: string,
+  summary: string,
+  metadata: TaskCompletionMetadata
+): Promise<Task | null> {
+  return await updateTask(taskId, { 
+    summary, 
+    completionMetadata: metadata,
+    completedAt: new Date()
+  });
 }
 
 // 更新任務內容
