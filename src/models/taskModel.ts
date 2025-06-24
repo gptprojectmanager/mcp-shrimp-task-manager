@@ -15,6 +15,8 @@ import { v4 as uuidv4 } from "uuid";
 import { fileURLToPath } from "url";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { CognitiveRouter } from "../tools/cognitiveRouter.js";
+import { MCPIntegrationLayer } from "../tools/mcpIntegration.js";
 
 // 確保獲取專案資料夾路徑
 const __filename = fileURLToPath(import.meta.url);
@@ -27,6 +29,10 @@ const TASKS_FILE = path.join(DATA_DIR, "tasks.json");
 
 // 將exec轉換為Promise形式
 const execPromise = promisify(exec);
+
+// 初始化認知路由組件
+const cognitiveRouter = new CognitiveRouter();
+const mcpIntegration = new MCPIntegrationLayer();
 
 // 確保數據目錄存在
 async function ensureDataDir() {
@@ -100,6 +106,24 @@ export async function createTask(
     updatedAt: new Date(),
     relatedFiles,
   };
+
+  // 自動進行認知路由評估 (System 1/System 2 cognitive architecture)
+  try {
+    const routingAssessment = cognitiveRouter.assessTaskComplexity(newTask);
+    newTask.cognitiveRouting = routingAssessment;
+
+    // 如果任務被路由到 System 2 (Graphiti MCP)，預先存儲到情節記憶
+    if (routingAssessment.systemRecommendation === 'SYSTEM_2' || 
+        routingAssessment.mcpServerTarget === 'graphiti') {
+      try {
+        await storeEpisodicMemory(newTask, routingAssessment);
+      } catch (error) {
+        console.warn(`Warning: Failed to store episodic memory for task ${newTask.id}:`, error);
+      }
+    }
+  } catch (error) {
+    console.warn(`Warning: Failed to assess cognitive routing for task ${newTask.id}:`, error);
+  }
 
   tasks.push(newTask);
   await writeTasks(tasks);
@@ -427,6 +451,24 @@ export async function batchCreateOrUpdateTasks(
         analysisResult: globalAnalysisResult,
       };
 
+      // 為新建任務進行認知路由評估
+      try {
+        const routingAssessment = cognitiveRouter.assessTaskComplexity(newTask);
+        newTask.cognitiveRouting = routingAssessment;
+
+        // 如果任務被路由到 System 2，預先存儲到情節記憶
+        if (routingAssessment.systemRecommendation === 'SYSTEM_2' || 
+            routingAssessment.mcpServerTarget === 'graphiti') {
+          try {
+            await storeEpisodicMemory(newTask, routingAssessment);
+          } catch (error) {
+            console.warn(`Warning: Failed to store episodic memory for batch task ${newTask.id}:`, error);
+          }
+        }
+      } catch (error) {
+        console.warn(`Warning: Failed to assess cognitive routing for batch task ${newTask.id}:`, error);
+      }
+
       newTasks.push(newTask);
     }
   }
@@ -687,6 +729,258 @@ export async function assessTaskComplexity(
     },
     recommendations,
   };
+}
+
+// ======= COGNITIVE ROUTING TASK EXECUTION =======
+
+/**
+ * Execute task operation with automatic cognitive routing
+ * Routes operations to appropriate MCP server based on task's cognitive routing assessment
+ * @param taskId Task ID to execute operation for
+ * @param operation MCP operation to execute
+ * @returns Promise with routed operation result
+ */
+export async function executeTaskWithCognitiveRouting(
+  taskId: string,
+  operation: { operation: string; parameters: Record<string, any> }
+): Promise<{ success: boolean; result?: any; routingInfo?: string; error?: string }> {
+  try {
+    const task = await getTaskById(taskId);
+    
+    if (!task) {
+      return { success: false, error: 'Task not found' };
+    }
+
+    // Use existing cognitive routing assessment or create new one
+    let routingAssessment = task.cognitiveRouting;
+    if (!routingAssessment) {
+      routingAssessment = cognitiveRouter.assessTaskComplexity(task);
+      
+      // Update task with routing assessment
+      await updateTask(taskId, { cognitiveRouting: routingAssessment });
+    }
+
+    // Convert operation to MCPOperation format
+    const mcpOperation = {
+      type: routingAssessment.mcpServerTarget === 'supabase' ? 'supabase' as const : 'graphiti' as const,
+      operation: operation.operation,
+      parameters: operation.parameters,
+      metadata: {
+        taskId: taskId,
+        timestamp: new Date().toISOString(),
+        complexity: routingAssessment.level,
+      },
+    };
+
+    // Execute via cognitive router with MCP integration
+    const result = await cognitiveRouter.executeWithCognitiveRouting(
+      routingAssessment,
+      mcpOperation
+    );
+
+    const routingInfo = `Routed to ${routingAssessment.mcpServerTarget} (${routingAssessment.systemRecommendation}) - Score: ${routingAssessment.complexityScore}`;
+
+    return {
+      success: result.success,
+      result: result.data,
+      routingInfo,
+      error: result.error,
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error in cognitive routing execution',
+    };
+  }
+}
+
+/**
+ * Get cognitive routing statistics for all tasks
+ * @returns Promise with routing statistics and performance metrics
+ */
+export async function getCognitiveRoutingStatistics(): Promise<{
+  success: boolean;
+  statistics?: {
+    totalTasks: number;
+    routingDistribution: {
+      system1: number;
+      system2: number;
+      hybrid: number;
+      unrouted: number;
+    };
+    complexityDistribution: {
+      [TaskComplexityLevel.LOW]: number;
+      [TaskComplexityLevel.MEDIUM]: number;
+      [TaskComplexityLevel.HIGH]: number;
+      [TaskComplexityLevel.VERY_HIGH]: number;
+    };
+    serverTargetDistribution: {
+      supabase: number;
+      graphiti: number;
+      hybrid: number;
+    };
+    averageComplexityScore: number;
+    mcpPerformanceMetrics: Record<string, any>;
+  };
+  error?: string;
+}> {
+  try {
+    const allTasks = await getAllTasks();
+    
+    const statistics = {
+      totalTasks: allTasks.length,
+      routingDistribution: {
+        system1: 0,
+        system2: 0,
+        hybrid: 0,
+        unrouted: 0,
+      },
+      complexityDistribution: {
+        [TaskComplexityLevel.LOW]: 0,
+        [TaskComplexityLevel.MEDIUM]: 0,
+        [TaskComplexityLevel.HIGH]: 0,
+        [TaskComplexityLevel.VERY_HIGH]: 0,
+      },
+      serverTargetDistribution: {
+        supabase: 0,
+        graphiti: 0,
+        hybrid: 0,
+      },
+      averageComplexityScore: 0,
+      mcpPerformanceMetrics: {},
+    };
+
+    let totalComplexityScore = 0;
+    let routedTasksCount = 0;
+
+    for (const task of allTasks) {
+      if (task.cognitiveRouting) {
+        routedTasksCount++;
+        totalComplexityScore += task.cognitiveRouting.complexityScore;
+
+        // Count routing distribution
+        switch (task.cognitiveRouting.systemRecommendation) {
+          case 'SYSTEM_1':
+            statistics.routingDistribution.system1++;
+            break;
+          case 'SYSTEM_2':
+            statistics.routingDistribution.system2++;
+            break;
+          case 'HYBRID':
+            statistics.routingDistribution.hybrid++;
+            break;
+        }
+
+        // Count complexity distribution
+        statistics.complexityDistribution[task.cognitiveRouting.level]++;
+
+        // Count server target distribution
+        switch (task.cognitiveRouting.mcpServerTarget) {
+          case 'supabase':
+            statistics.serverTargetDistribution.supabase++;
+            break;
+          case 'graphiti':
+            statistics.serverTargetDistribution.graphiti++;
+            break;
+          case 'hybrid':
+            statistics.serverTargetDistribution.hybrid++;
+            break;
+        }
+      } else {
+        statistics.routingDistribution.unrouted++;
+      }
+    }
+
+    statistics.averageComplexityScore = routedTasksCount > 0 
+      ? Math.round(totalComplexityScore / routedTasksCount) 
+      : 0;
+
+    // Get MCP performance metrics from cognitive router
+    try {
+      statistics.mcpPerformanceMetrics = cognitiveRouter.getMCPPerformanceStatistics();
+    } catch (error) {
+      console.warn('Warning: Failed to get MCP performance metrics:', error);
+    }
+
+    return {
+      success: true,
+      statistics,
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error getting routing statistics',
+    };
+  }
+}
+
+/**
+ * Re-assess cognitive routing for existing tasks (migration/update utility)
+ * @param taskIds Optional array of specific task IDs to re-assess
+ * @returns Promise with re-assessment results
+ */
+export async function reassessCognitiveRouting(
+  taskIds?: string[]
+): Promise<{
+  success: boolean;
+  reassessed: number;
+  errors: string[];
+}> {
+  const results = {
+    success: true,
+    reassessed: 0,
+    errors: [] as string[],
+  };
+
+  try {
+    let tasksToReassess: Task[];
+    
+    if (taskIds && taskIds.length > 0) {
+      tasksToReassess = [];
+      for (const taskId of taskIds) {
+        const task = await getTaskById(taskId);
+        if (task) {
+          tasksToReassess.push(task);
+        } else {
+          results.errors.push(`Task not found: ${taskId}`);
+        }
+      }
+    } else {
+      tasksToReassess = await getAllTasks();
+    }
+
+    for (const task of tasksToReassess) {
+      try {
+        const routingAssessment = cognitiveRouter.assessTaskComplexity(task);
+        await updateTask(task.id, { cognitiveRouting: routingAssessment });
+        results.reassessed++;
+
+        // Store episodic memory for System 2 tasks if not already stored
+        if (routingAssessment.systemRecommendation === 'SYSTEM_2' && 
+            routingAssessment.level >= TaskComplexityLevel.HIGH) {
+          try {
+            await storeEpisodicMemory(task, routingAssessment);
+          } catch (error) {
+            // Non-critical error, continue processing
+          }
+        }
+      } catch (error) {
+        results.errors.push(`Failed to reassess task ${task.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    if (results.errors.length > 0) {
+      results.success = false;
+    }
+
+  } catch (error) {
+    results.success = false;
+    results.errors.push(error instanceof Error ? error.message : 'Unknown error during reassessment');
+  }
+
+  return results;
 }
 
 // ======= EPISODIC MEMORY INTEGRATION (System 2 / Graphiti MCP) =======

@@ -54,6 +54,9 @@ export interface Task {
   
   // 任務完成元數據：保存辯論協議分析結果和完成詳情
   completionMetadata?: TaskCompletionMetadata; // 完成元數據（辯論分析結果）
+  
+  // 認知路由：System 1/System 2 cognitive architecture 路由信息
+  cognitiveRouting?: CognitiveRoutingAssessment; // 認知路由評估結果（任務創建時自動評估）
 }
 
 // 任務複雜度級別：定義任務的複雜程度分類
