@@ -5,6 +5,8 @@ import {
   updateTaskStatus,
   canExecuteTask,
   assessTaskComplexity,
+  retrieveEpisodicContext,
+  searchEpisodicMemory,
 } from "../../models/taskModel.js";
 import { TaskStatus, Task } from "../../types/index.js";
 import { getExecuteTaskPrompt } from "../../prompts/index.js";
@@ -125,11 +127,43 @@ export async function executeTask({
       }
     }
 
-    // 使用prompt生成器獲取最終prompt
+    // Retrieve episodic memory context for complex tasks
+    let episodicContext = "";
+    try {
+      // Retrieve specific context for this task
+      const contextResult = await retrieveEpisodicContext(taskId);
+      if (contextResult.success && contextResult.context) {
+        episodicContext += "\n\n## Episodic Memory Context\n";
+        episodicContext += `Previous analysis for this task:\n`;
+        episodicContext += `- Complexity Level: ${contextResult.context.complexityLevel}\n`;
+        episodicContext += `- System Recommendation: ${contextResult.context.systemRecommendation}\n`;
+        if (contextResult.context.analysisResult) {
+          episodicContext += `- Previous Analysis: ${contextResult.context.analysisResult.substring(0, 300)}...\n`;
+        }
+      }
+
+      // Search for related task contexts if this task has complex description
+      if (task.description.length > 200) {
+        const searchQuery = task.name + " " + task.description.substring(0, 100);
+        const searchResult = await searchEpisodicMemory(searchQuery, 3);
+        
+        if (searchResult.success && searchResult.facts && searchResult.facts.length > 0) {
+          episodicContext += "\n### Related Task Contexts\n";
+          searchResult.facts.forEach((fact, index) => {
+            episodicContext += `${index + 1}. ${fact.extractedFact}\n`;
+          });
+        }
+      }
+    } catch (error) {
+      console.log('Note: Episodic memory retrieval encountered an issue:', error);
+    }
+
+    // 使用prompt生成器獲取最終prompt，包含episodic context
+    const enhancedRelatedFilesSummary = relatedFilesSummary + episodicContext;
     const prompt = getExecuteTaskPrompt({
       task,
       complexityAssessment,
-      relatedFilesSummary,
+      relatedFilesSummary: enhancedRelatedFilesSummary,
       dependencyTasks,
     });
 

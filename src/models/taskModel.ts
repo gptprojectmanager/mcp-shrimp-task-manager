@@ -7,6 +7,7 @@ import {
   TaskComplexityAssessment,
   RelatedFile,
   TaskCompletionMetadata,
+  CognitiveRoutingAssessment,
 } from "../types/index.js";
 import fs from "fs/promises";
 import path from "path";
@@ -686,6 +687,322 @@ export async function assessTaskComplexity(
     },
     recommendations,
   };
+}
+
+// ======= EPISODIC MEMORY INTEGRATION (System 2 / Graphiti MCP) =======
+
+/**
+ * Store episodic memory for complex tasks using Graphiti MCP (System 2)
+ * Automatically stores structured analysis data for HIGH and VERY_HIGH complexity tasks
+ * @param task Task to store in episodic memory
+ * @param complexityAssessment Optional complexity assessment (will compute if not provided)
+ * @returns Promise with storage result
+ */
+export async function storeEpisodicMemory(
+  task: Task,
+  complexityAssessment?: CognitiveRoutingAssessment
+): Promise<{ success: boolean; episodeId?: string; error?: string }> {
+  try {
+    // Assess complexity if not provided
+    let assessment = complexityAssessment;
+    if (!assessment) {
+      const baseAssessment = await assessTaskComplexity(task.id);
+      if (!baseAssessment) {
+        return { success: false, error: 'Could not assess task complexity' };
+      }
+      // Create a basic cognitive routing assessment
+      assessment = {
+        ...baseAssessment,
+        systemRecommendation: baseAssessment.level >= TaskComplexityLevel.HIGH ? 'SYSTEM_2' : 'SYSTEM_1',
+        mcpServerTarget: baseAssessment.level >= TaskComplexityLevel.HIGH ? 'graphiti' : 'supabase',
+        routingJustification: [`Task complexity: ${baseAssessment.level}`],
+        episodicMemoryRequired: baseAssessment.level >= TaskComplexityLevel.HIGH,
+        temporalContextRequired: !!task.notes && task.notes.toLowerCase().includes('temporal'),
+        complexityScore: baseAssessment.level === TaskComplexityLevel.LOW ? 20 :
+                        baseAssessment.level === TaskComplexityLevel.MEDIUM ? 40 :
+                        baseAssessment.level === TaskComplexityLevel.HIGH ? 70 : 90,
+      };
+    }
+
+    // Only store episodic memory for HIGH and VERY_HIGH complexity tasks
+    if (assessment.level < TaskComplexityLevel.HIGH) {
+      return { 
+        success: true, 
+        episodeId: 'skipped_low_complexity',
+        error: 'Task complexity below threshold for episodic memory storage'
+      };
+    }
+
+    // Prepare structured episode data
+    const episodeData = {
+      taskId: task.id,
+      taskName: task.name,
+      complexityLevel: assessment.level,
+      complexityScore: assessment.complexityScore,
+      analysisResult: task.analysisResult || 'No analysis result available',
+      implementationGuide: task.implementationGuide || 'No implementation guide available', 
+      verificationCriteria: task.verificationCriteria || 'No verification criteria available',
+      dependencies: task.dependencies.map(dep => dep.taskId),
+      relatedFiles: task.relatedFiles || [],
+      status: task.status,
+      createdAt: task.createdAt.toISOString(),
+      completedAt: task.completedAt?.toISOString(),
+      summary: task.summary,
+      systemRecommendation: assessment.systemRecommendation,
+      routingJustification: assessment.routingJustification,
+      temporalContext: assessment.temporalContextRequired,
+      episodicMemoryRequired: assessment.episodicMemoryRequired,
+    };
+
+    // Note: This is a placeholder for actual MCP integration
+    // In a real implementation, this would call the Graphiti MCP server
+    // For now, we simulate the episodic memory storage
+    
+    // Simulate MCP call to mcp__graphiti-memory__add_memory
+    const episodeBody = JSON.stringify(episodeData, null, 2);
+    const episodeName = `Task Analysis: ${task.name} (ID: ${task.id})`;
+    
+    // Store episode in local memory simulation
+    const episodeId = `episode_${task.id}_${Date.now()}`;
+    
+    // In real implementation, this would be:
+    // const result = await mcpGraphitiMemory.add_memory({
+    //   name: episodeName,
+    //   episode_body: episodeBody,
+    //   source: 'task_analysis',
+    //   source_description: `Complex task analysis for ${task.name}`,
+    //   group_id: task.id,
+    //   uuid: episodeId
+    // });
+
+    // For now, store in local file system as backup
+    await storeEpisodicMemoryBackup(task.id, episodeData);
+
+    return {
+      success: true,
+      episodeId: episodeId,
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error storing episodic memory',
+    };
+  }
+}
+
+/**
+ * Retrieve episodic context for a task using Graphiti MCP search
+ * @param taskId Task ID to search context for
+ * @param maxNodes Maximum number of memory nodes to retrieve
+ * @returns Promise with episodic context data
+ */
+export async function retrieveEpisodicContext(
+  taskId: string,
+  maxNodes: number = 5
+): Promise<{ success: boolean; context?: any; nodes?: any[]; error?: string }> {
+  try {
+    const task = await getTaskById(taskId);
+    if (!task) {
+      return { success: false, error: 'Task not found' };
+    }
+
+    // Prepare search query for Graphiti MCP
+    const searchQuery = `Task context for ${task.name} (ID: ${taskId})`;
+
+    // Note: This is a placeholder for actual MCP integration
+    // In a real implementation, this would call the Graphiti MCP server
+    
+    // Simulate MCP call to mcp__graphiti-memory__search_memory_nodes
+    // const result = await mcpGraphitiMemory.search_memory_nodes({
+    //   query: searchQuery,
+    //   max_nodes: maxNodes,
+    //   group_ids: [taskId]
+    // });
+
+    // For now, retrieve from local backup storage
+    const localContext = await retrieveEpisodicMemoryBackup(taskId);
+    
+    if (localContext) {
+      return {
+        success: true,
+        context: localContext,
+        nodes: [localContext], // Simulate node structure
+      };
+    }
+
+    return {
+      success: true,
+      context: null,
+      nodes: [],
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error retrieving episodic context',
+    };
+  }
+}
+
+/**
+ * Search episodic memory for related tasks using semantic search
+ * @param query Search query for semantic similarity
+ * @param maxFacts Maximum number of facts to retrieve
+ * @returns Promise with related episodic facts
+ */
+export async function searchEpisodicMemory(
+  query: string,
+  maxFacts: number = 10
+): Promise<{ success: boolean; facts?: any[]; error?: string }> {
+  try {
+    // Note: This is a placeholder for actual MCP integration
+    // In a real implementation, this would call the Graphiti MCP server
+    
+    // Simulate MCP call to mcp__graphiti-memory__search_memory_facts
+    // const result = await mcpGraphitiMemory.search_memory_facts({
+    //   query: query,
+    //   max_facts: maxFacts
+    // });
+
+    // For now, search local backup storage
+    const localFacts = await searchEpisodicMemoryBackup(query, maxFacts);
+    
+    return {
+      success: true,
+      facts: localFacts,
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error searching episodic memory',
+    };
+  }
+}
+
+/**
+ * Enhanced task completion that automatically stores episodic memory
+ * @param taskId Task ID to complete
+ * @param summary Task completion summary
+ * @param metadata Task completion metadata
+ * @returns Promise with completion result and episodic storage status
+ */
+export async function completeTaskWithEpisodicMemory(
+  taskId: string,
+  summary: string,
+  metadata: TaskCompletionMetadata
+): Promise<{ 
+  success: boolean; 
+  task?: Task; 
+  episodicStorage?: { success: boolean; episodeId?: string; error?: string };
+  error?: string 
+}> {
+  try {
+    // First complete the task normally
+    const updatedTask = await updateTaskWithDebateResults(taskId, summary, metadata);
+    
+    if (!updatedTask) {
+      return { success: false, error: 'Failed to complete task' };
+    }
+
+    // Store episodic memory for complex tasks
+    const episodicResult = await storeEpisodicMemory(updatedTask);
+    
+    return {
+      success: true,
+      task: updatedTask,
+      episodicStorage: episodicResult,
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error completing task with episodic memory',
+    };
+  }
+}
+
+// ======= LOCAL BACKUP STORAGE FUNCTIONS (for MCP simulation) =======
+
+/**
+ * Store episodic memory data in local backup storage
+ * @param taskId Task ID
+ * @param episodeData Episode data to store
+ */
+async function storeEpisodicMemoryBackup(taskId: string, episodeData: any): Promise<void> {
+  const EPISODIC_DIR = path.join(DATA_DIR, "episodic_memory");
+  
+  try {
+    await fs.access(EPISODIC_DIR);
+  } catch (error) {
+    await fs.mkdir(EPISODIC_DIR, { recursive: true });
+  }
+
+  const episodeFile = path.join(EPISODIC_DIR, `episode_${taskId}.json`);
+  await fs.writeFile(episodeFile, JSON.stringify(episodeData, null, 2));
+}
+
+/**
+ * Retrieve episodic memory data from local backup storage
+ * @param taskId Task ID
+ * @returns Promise with episode data or null
+ */
+async function retrieveEpisodicMemoryBackup(taskId: string): Promise<any | null> {
+  const EPISODIC_DIR = path.join(DATA_DIR, "episodic_memory");
+  const episodeFile = path.join(EPISODIC_DIR, `episode_${taskId}.json`);
+  
+  try {
+    const data = await fs.readFile(episodeFile, 'utf-8');
+    return JSON.parse(data);
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Search episodic memory backup storage for matching facts
+ * @param query Search query
+ * @param maxFacts Maximum facts to return
+ * @returns Promise with matching facts
+ */
+async function searchEpisodicMemoryBackup(query: string, maxFacts: number): Promise<any[]> {
+  const EPISODIC_DIR = path.join(DATA_DIR, "episodic_memory");
+  const facts: any[] = [];
+  
+  try {
+    await fs.access(EPISODIC_DIR);
+    const files = await fs.readdir(EPISODIC_DIR);
+    
+    const queryLower = query.toLowerCase();
+    
+    for (const file of files.slice(0, maxFacts)) {
+      if (file.endsWith('.json')) {
+        try {
+          const filePath = path.join(EPISODIC_DIR, file);
+          const data = await fs.readFile(filePath, 'utf-8');
+          const episodeData = JSON.parse(data);
+          
+          // Simple text matching for now (in real implementation, would use semantic search)
+          const content = JSON.stringify(episodeData).toLowerCase();
+          if (content.includes(queryLower)) {
+            facts.push({
+              episodeId: file.replace('.json', ''),
+              relevance: 0.8, // Placeholder relevance score
+              content: episodeData,
+              extractedFact: `Task: ${episodeData.taskName} - ${episodeData.analysisResult?.substring(0, 200)}...`,
+            });
+          }
+        } catch (error) {
+          // Skip invalid files
+        }
+      }
+    }
+  } catch (error) {
+    // Directory doesn't exist or other error
+  }
+  
+  return facts;
 }
 
 // 清除所有任務

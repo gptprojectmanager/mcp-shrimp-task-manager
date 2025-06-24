@@ -5,6 +5,7 @@ import {
   updateTaskStatus,
   updateTaskSummary,
   updateTaskWithDebateResults,
+  completeTaskWithEpisodicMemory,
 } from "../../models/taskModel.js";
 import { TaskStatus, DebateVerificationParams, DebateScoreBreakdown, AntiObfuscationResult, TaskCompletionMetadata } from "../../types/index.js";
 import { getVerifyTaskPrompt } from "../../prompts/index.js";
@@ -355,9 +356,17 @@ export async function verifyTask({
       recommendations: generateCompletionRecommendations(task, debateResult, finalScore)
     };
 
-    // 使用綜合更新函數同時更新摘要、元數據和狀態
-    await updateTaskWithDebateResults(taskId, enhancedSummary, completionMetadata);
-    await updateTaskStatus(taskId, TaskStatus.COMPLETED);
+    // 使用增強的完成函數，自動處理episodic memory存儲
+    const completionResult = await completeTaskWithEpisodicMemory(
+      taskId, 
+      enhancedSummary, 
+      completionMetadata
+    );
+    
+    // Log episodic memory storage result (for debugging)
+    if (completionResult.episodicStorage) {
+      console.log(`Episodic memory storage for task ${taskId}:`, completionResult.episodicStorage);
+    }
   }
 
   // 使用prompt生成器獲取最終prompt，傳入調整後的分數
