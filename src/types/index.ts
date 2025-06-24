@@ -145,3 +145,101 @@ export interface TaskCompletionMetadata {
   completionConfidence: 'LOW' | 'MEDIUM' | 'HIGH'; // 完成信心度
   recommendations: string[]; // 建議和洞察
 }
+
+// Parallel Task Orchestration Types
+
+// Wave Configuration: Defines parameters for parallel task execution waves
+export interface WaveConfiguration {
+  size: number; // Number of agents in the wave (1-5 for small, 6-20 for large, 3-5 for infinite)
+  timing: 'SIMULTANEOUS' | 'BATCH' | 'PROGRESSIVE'; // Execution timing strategy
+  sophisticationLevel: 'BASIC' | 'INTERMEDIATE' | 'ADVANCED' | 'REVOLUTIONARY'; // Innovation complexity level
+  maxConcurrency: number; // Maximum concurrent agents allowed
+  contextThreshold: number; // Context usage threshold for wave management
+}
+
+// Agent Assignment: Defines task assignment for individual sub-agents
+export interface AgentAssignment {
+  agentId: string; // Unique identifier for the sub-agent
+  taskId: string; // ID of the task being assigned
+  iterationNumber: number; // Iteration sequence number for uniqueness
+  taskContext: {
+    specAnalysis: string; // Complete specification analysis
+    directorySnapshot: string; // Current state of output directory
+    existingIterations: string[]; // Summary of existing task completions
+  };
+  uniquenessDirective: {
+    assignedInnovationDimension: string; // Specific innovation focus area
+    conflictAvoidanceStrategy: string; // Strategy to prevent duplication
+    creativeFocus: string; // Unique creative direction for this agent
+  };
+  qualityStandards: {
+    specCompliance: string[]; // Requirements from specification
+    valueAddRequirements: string[]; // Expected value-add criteria
+    completionCriteria: string[]; // Specific completion requirements
+  };
+}
+
+// Parallel Execution Manager: Manages concurrent agent execution
+export interface ParallelExecutionManager {
+  waveId: string; // Unique identifier for the execution wave
+  activeAgents: Map<string, AgentStatus>; // Currently executing agents and their status
+  completedAgents: string[]; // Successfully completed agent IDs
+  failedAgents: string[]; // Failed agent IDs for reassignment
+  progressMetrics: {
+    totalAgents: number;
+    completedCount: number;
+    failedCount: number;
+    averageCompletionTime: number;
+  };
+}
+
+// Agent Status: Current status of a sub-agent
+export interface AgentStatus {
+  agentId: string;
+  status: 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  startTime: number;
+  endTime?: number;
+  lastUpdate: number;
+  progressNotes: string[];
+}
+
+// Progressive Wave Strategy: Defines evolution across waves
+export interface ProgressiveWaveStrategy {
+  currentWave: number;
+  totalWaves: number | 'INFINITE';
+  waveProgression: {
+    wave: number;
+    sophisticationLevel: string;
+    innovationDimensions: string[];
+    complexityTargets: string[];
+  }[];
+  evolutionPattern: 'LINEAR' | 'EXPONENTIAL' | 'ADAPTIVE';
+}
+
+// Context Capacity Monitor: Tracks context usage across agents
+export interface ContextCapacityMonitor {
+  totalCapacity: number;
+  usedCapacity: number;
+  reservedCapacity: number;
+  agentUsage: Map<string, number>;
+  waveUsage: Map<string, number>;
+  remainingCapacity: number;
+  utilizationPercentage: number;
+}
+
+// Task Orchestration Configuration: Main configuration for parallel execution
+export interface TaskOrchestrationConfig {
+  mode: 'SINGLE' | 'BATCH' | 'INFINITE';
+  waveConfiguration: WaveConfiguration;
+  progressiveStrategy: ProgressiveWaveStrategy;
+  contextMonitoring: {
+    enabled: boolean;
+    threshold: number;
+    gracefulShutdown: boolean;
+  };
+  failureHandling: {
+    maxRetries: number;
+    reassignmentStrategy: 'IMMEDIATE' | 'NEXT_WAVE' | 'DEFER';
+    failureThreshold: number;
+  };
+}
