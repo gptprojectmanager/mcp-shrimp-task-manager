@@ -7,6 +7,7 @@ import {
   MCPOperation,
   MCPResult,
 } from '../types/index.js';
+import { MCPIntegrationLayer } from './mcpIntegration.js';
 
 /**
  * CognitiveRouter: Core cognitive routing system implementing System 1/System 2 architecture
@@ -18,6 +19,11 @@ export class CognitiveRouter {
   private readonly graphitiThreshold = TaskComplexityThresholds.DESCRIPTION_LENGTH.HIGH;
   private readonly dependencyThresholdMedium = TaskComplexityThresholds.DEPENDENCIES_COUNT.MEDIUM;
   private readonly dependencyThresholdHigh = TaskComplexityThresholds.DEPENDENCIES_COUNT.HIGH;
+  private readonly mcpIntegration: MCPIntegrationLayer;
+
+  constructor(mcpIntegration?: MCPIntegrationLayer) {
+    this.mcpIntegration = mcpIntegration || new MCPIntegrationLayer();
+  }
 
   /**
    * Assess task complexity and determine cognitive routing strategy
@@ -143,104 +149,93 @@ export class CognitiveRouter {
   }
 
   /**
-   * Execute operation via appropriate MCP server
+   * Execute operation via appropriate MCP server using integrated MCP layer
    * @param systemType Target system type
    * @param operation MCP operation to execute
    * @returns Promise with operation result
    */
   public async executeViaMCP(systemType: string, operation: MCPOperation): Promise<MCPResult> {
-    const startTime = Date.now();
-    
     try {
-      // Note: Actual MCP integration will be implemented in Task 3 (MCP Integration Layer)
-      // This is a placeholder implementation for the core routing logic
-      
-      let result: any;
-      
       if (systemType === 'supabase' || operation.type === 'supabase') {
-        // Route to Supabase MCP (System 1)
-        result = await this.executeSupabaseOperation(operation);
+        // Route to Supabase MCP (System 1) via integration layer
+        const supabaseParams = {
+          table_name: operation.parameters.table_name || 'tasks',
+          ...operation.parameters,
+        };
+        return await this.mcpIntegration.callSupabaseMCP({
+          type: operation.operation as any,
+          parameters: supabaseParams,
+        });
       } else if (systemType === 'graphiti' || operation.type === 'graphiti') {
-        // Route to Graphiti MCP (System 2)
-        result = await this.executeGraphitiOperation(operation);
+        // Route to Graphiti MCP (System 2) via integration layer
+        return await this.mcpIntegration.callGraphitiMCP({
+          type: operation.operation as any,
+          parameters: operation.parameters,
+        });
       } else if (systemType === 'hybrid') {
-        // Coordinate both systems
-        result = await this.executeHybridOperation(operation);
+        // Coordinate both systems via integration layer
+        return await this.mcpIntegration.executeHybridOperation({
+          type: 'coordinated_analysis',
+          supabaseOperation: {
+            type: 'read_table_rows',
+            parameters: { table_name: 'tasks' },
+          },
+          graphitiOperation: {
+            type: 'search_memory_nodes',
+            parameters: { query: operation.parameters.query || 'task analysis' },
+          },
+          coordination: {
+            sequence: 'supabase_first',
+            dataFlow: 'supabase_to_graphiti',
+            resultCombination: 'merge',
+          },
+        });
       } else {
         throw new Error(`Unknown system type: ${systemType}`);
       }
-
-      const responseTime = Date.now() - startTime;
-      
-      return {
-        success: true,
-        data: result,
-        responseTime,
-        serverType: operation.type,
-      };
     } catch (error) {
-      const responseTime = Date.now() - startTime;
-      
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        responseTime,
+        error: error instanceof Error ? error.message : 'Cognitive routing failed',
+        responseTime: 0,
         serverType: operation.type,
+        metadata: {
+          routingDecision: `Failed to route to ${systemType}`,
+        },
       };
     }
   }
 
   /**
-   * Execute operation via Supabase MCP (System 1)
-   * @param operation MCP operation
-   * @returns Operation result
+   * Execute operation with cognitive routing assessment
+   * @param assessment Cognitive routing assessment
+   * @param operation MCP operation to execute
+   * @returns Promise with routed operation result
    */
-  private async executeSupabaseOperation(operation: MCPOperation): Promise<any> {
-    // Placeholder for Supabase MCP integration
-    // Will be implemented in Task 3: MCP Integration Layer
-    return {
-      system: 'supabase',
-      operation: operation.operation,
-      parameters: operation.parameters,
-      timestamp: new Date().toISOString(),
-    };
+  public async executeWithCognitiveRouting(
+    assessment: CognitiveRoutingAssessment,
+    operation: MCPOperation
+  ): Promise<MCPResult> {
+    return await this.mcpIntegration.routeOperation(assessment, operation);
   }
 
   /**
-   * Execute operation via Graphiti MCP (System 2)
-   * @param operation MCP operation
-   * @returns Operation result
+   * Get MCP integration layer performance statistics
+   * @returns Performance statistics from MCP integration layer
    */
-  private async executeGraphitiOperation(operation: MCPOperation): Promise<any> {
-    // Placeholder for Graphiti MCP integration
-    // Will be implemented in Task 3: MCP Integration Layer
-    return {
-      system: 'graphiti',
-      operation: operation.operation,
-      parameters: operation.parameters,
-      timestamp: new Date().toISOString(),
-    };
+  public getMCPPerformanceStatistics(): Record<string, any> {
+    return this.mcpIntegration.getPerformanceStatistics();
   }
 
   /**
-   * Execute hybrid operation coordinating both systems
-   * @param operation MCP operation
-   * @returns Combined operation result
+   * Check MCP server connection status
+   * @returns Promise with connection status for both servers
    */
-  private async executeHybridOperation(operation: MCPOperation): Promise<any> {
-    // Placeholder for hybrid coordination
-    // Will be implemented in Task 3: MCP Integration Layer
-    const supabaseResult = await this.executeSupabaseOperation(operation);
-    const graphitiResult = await this.executeGraphitiOperation(operation);
-    
-    return {
-      system: 'hybrid',
-      supabaseResult,
-      graphitiResult,
-      operation: operation.operation,
-      parameters: operation.parameters,
-      timestamp: new Date().toISOString(),
-    };
+  public async checkMCPConnectionStatus(): Promise<{
+    supabase: { connected: boolean; responseTime?: number };
+    graphiti: { connected: boolean; responseTime?: number };
+  }> {
+    return await this.mcpIntegration.checkConnectionStatus();
   }
 
   /**
