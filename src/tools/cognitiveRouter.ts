@@ -8,6 +8,7 @@ import {
   MCPResult,
 } from '../types/index.js';
 import { MCPIntegrationLayer } from './mcpIntegration.js';
+import { RoutingPerformanceMonitor, routingPerformanceMonitor } from './routingMetrics.js';
 
 /**
  * CognitiveRouter: Core cognitive routing system implementing System 1/System 2 architecture
@@ -20,9 +21,11 @@ export class CognitiveRouter {
   private readonly dependencyThresholdMedium = TaskComplexityThresholds.DEPENDENCIES_COUNT.MEDIUM;
   private readonly dependencyThresholdHigh = TaskComplexityThresholds.DEPENDENCIES_COUNT.HIGH;
   private readonly mcpIntegration: MCPIntegrationLayer;
+  private readonly performanceMonitor: RoutingPerformanceMonitor;
 
-  constructor(mcpIntegration?: MCPIntegrationLayer) {
+  constructor(mcpIntegration?: MCPIntegrationLayer, performanceMonitor?: RoutingPerformanceMonitor) {
     this.mcpIntegration = mcpIntegration || new MCPIntegrationLayer();
+    this.performanceMonitor = performanceMonitor || routingPerformanceMonitor;
   }
 
   /**
@@ -152,9 +155,21 @@ export class CognitiveRouter {
    * Execute operation via appropriate MCP server using integrated MCP layer
    * @param systemType Target system type
    * @param operation MCP operation to execute
+   * @param taskId Optional task ID for performance tracking
+   * @param taskName Optional task name for performance tracking
+   * @param assessment Optional assessment for performance tracking
    * @returns Promise with operation result
    */
-  public async executeViaMCP(systemType: string, operation: MCPOperation): Promise<MCPResult> {
+  public async executeViaMCP(
+    systemType: string, 
+    operation: MCPOperation, 
+    taskId?: string, 
+    taskName?: string,
+    assessment?: CognitiveRoutingAssessment
+  ): Promise<MCPResult> {
+    const startTime = Date.now();
+    let result: MCPResult;
+
     try {
       if (systemType === 'supabase' || operation.type === 'supabase') {
         // Route to Supabase MCP (System 1) via integration layer
@@ -162,19 +177,19 @@ export class CognitiveRouter {
           table_name: operation.parameters.table_name || 'tasks',
           ...operation.parameters,
         };
-        return await this.mcpIntegration.callSupabaseMCP({
+        result = await this.mcpIntegration.callSupabaseMCP({
           type: operation.operation as any,
           parameters: supabaseParams,
         });
       } else if (systemType === 'graphiti' || operation.type === 'graphiti') {
         // Route to Graphiti MCP (System 2) via integration layer
-        return await this.mcpIntegration.callGraphitiMCP({
+        result = await this.mcpIntegration.callGraphitiMCP({
           type: operation.operation as any,
           parameters: operation.parameters,
         });
       } else if (systemType === 'hybrid') {
         // Coordinate both systems via integration layer
-        return await this.mcpIntegration.executeHybridOperation({
+        result = await this.mcpIntegration.executeHybridOperation({
           type: 'coordinated_analysis',
           supabaseOperation: {
             type: 'read_table_rows',
@@ -194,16 +209,23 @@ export class CognitiveRouter {
         throw new Error(`Unknown system type: ${systemType}`);
       }
     } catch (error) {
-      return {
+      result = {
         success: false,
         error: error instanceof Error ? error.message : 'Cognitive routing failed',
-        responseTime: 0,
+        responseTime: Date.now() - startTime,
         serverType: operation.type,
         metadata: {
           routingDecision: `Failed to route to ${systemType}`,
         },
       };
     }
+
+    // Record performance metrics if tracking data is available
+    if (taskId && taskName && assessment) {
+      this.performanceMonitor.recordRoutingDecision(taskId, taskName, assessment, result);
+    }
+
+    return result;
   }
 
   /**
@@ -243,16 +265,41 @@ export class CognitiveRouter {
    * @returns Routing statistics object
    */
   public getRoutingStatistics(): Record<string, any> {
-    // Placeholder for routing statistics
-    // Will be enhanced in Task 6: Performance Monitoring
-    return {
-      totalRoutingDecisions: 0,
-      system1Decisions: 0,
-      system2Decisions: 0,
-      hybridDecisions: 0,
-      averageComplexityScore: 0,
-      lastUpdated: new Date().toISOString(),
-    };
+    return this.performanceMonitor.getPerformanceSummary();
+  }
+
+  /**
+   * Generate comprehensive performance report
+   * @returns Complete routing performance metrics
+   */
+  public generatePerformanceReport() {
+    return this.performanceMonitor.generatePerformanceReport();
+  }
+
+  /**
+   * Optimize routing thresholds based on performance data
+   * @returns Optimization recommendations
+   */
+  public optimizeThresholds() {
+    return this.performanceMonitor.optimizeRoutingThresholds();
+  }
+
+  /**
+   * Get recent decision history for analysis
+   * @param limit Number of recent decisions to return
+   * @returns Array of routing decision records
+   */
+  public getDecisionHistory(limit: number = 50) {
+    return this.performanceMonitor.getDecisionHistory(limit);
+  }
+
+  /**
+   * Log performance metrics to Supabase
+   * @returns Promise with logging result
+   */
+  public async logPerformanceMetrics() {
+    const metrics = this.performanceMonitor.generatePerformanceReport();
+    return await this.performanceMonitor.logToSupabase(metrics);
   }
 }
 

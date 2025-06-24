@@ -772,10 +772,13 @@ export async function executeTaskWithCognitiveRouting(
       },
     };
 
-    // Execute via cognitive router with MCP integration
-    const result = await cognitiveRouter.executeWithCognitiveRouting(
-      routingAssessment,
-      mcpOperation
+    // Execute via cognitive router with MCP integration and performance tracking
+    const result = await cognitiveRouter.executeViaMCP(
+      routingAssessment.mcpServerTarget,
+      mcpOperation,
+      taskId,
+      task.name,
+      routingAssessment
     );
 
     const routingInfo = `Routed to ${routingAssessment.mcpServerTarget} (${routingAssessment.systemRecommendation}) - Score: ${routingAssessment.complexityScore}`;
@@ -896,11 +899,17 @@ export async function getCognitiveRoutingStatistics(): Promise<{
       ? Math.round(totalComplexityScore / routedTasksCount) 
       : 0;
 
-    // Get MCP performance metrics from cognitive router
+    // Get comprehensive performance metrics from cognitive router
     try {
-      statistics.mcpPerformanceMetrics = cognitiveRouter.getMCPPerformanceStatistics();
+      statistics.mcpPerformanceMetrics = {
+        ...cognitiveRouter.getMCPPerformanceStatistics(),
+        routingPerformance: cognitiveRouter.getRoutingStatistics(),
+        performanceReport: cognitiveRouter.generatePerformanceReport(),
+        optimizationRecommendations: cognitiveRouter.optimizeThresholds(),
+      };
     } catch (error) {
-      console.warn('Warning: Failed to get MCP performance metrics:', error);
+      console.warn('Warning: Failed to get performance metrics:', error);
+      statistics.mcpPerformanceMetrics = {};
     }
 
     return {
