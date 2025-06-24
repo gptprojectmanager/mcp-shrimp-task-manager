@@ -96,6 +96,69 @@ export interface TaskComplexityAssessment {
   recommendations: string[]; // 處理建議列表
 }
 
+// 認知路由評估結果：擴展任務複雜度評估以支持 System 1/System 2 認知架構路由
+export interface CognitiveRoutingAssessment extends TaskComplexityAssessment {
+  systemRecommendation: 'SYSTEM_1' | 'SYSTEM_2' | 'HYBRID'; // 系統推薦：System 1 (快速)、System 2 (深思)、混合模式
+  mcpServerTarget: 'supabase' | 'graphiti' | 'hybrid'; // MCP 服務器目標：Supabase (高吞吐量)、Graphiti (記憶圖譜)、混合模式
+  routingJustification: string[]; // 路由決策理由列表
+  episodicMemoryRequired: boolean; // 是否需要情節記憶存儲 (Graphiti MCP)
+  temporalContextRequired: boolean; // 是否需要時間上下文處理
+  complexityScore: number; // 複雜度評分 (0-100)，用於精確路由決策
+}
+
+// MCP 操作介面：定義 MCP 服務器操作的類型安全結構
+export interface MCPOperation {
+  type: 'supabase' | 'graphiti'; // MCP 服務器類型
+  operation: string; // 操作名稱 (例如: 'read_table_rows', 'add_memory')
+  parameters: Record<string, any>; // 操作參數
+  metadata?: {
+    taskId?: string; // 關聯的任務 ID
+    timestamp?: string; // 操作時間戳
+    complexity?: TaskComplexityLevel; // 任務複雜度級別
+  };
+}
+
+// MCP 操作結果介面：標準化 MCP 服務器響應格式
+export interface MCPResult {
+  success: boolean; // 操作是否成功
+  data?: any; // 返回的數據
+  error?: string; // 錯誤信息 (如果操作失敗)
+  responseTime: number; // 響應時間 (毫秒)
+  serverType: 'supabase' | 'graphiti'; // 執行操作的服務器類型
+  metadata?: {
+    operationId?: string; // 操作唯一標識符
+    cacheHit?: boolean; // 是否命中緩存
+    routingDecision?: string; // 路由決策記錄
+  };
+}
+
+// 認知路由決策類型：System 1/System 2 cognitive architecture 的路由選項
+export type CognitiveSystemType = 'SYSTEM_1' | 'SYSTEM_2' | 'HYBRID';
+
+// MCP 服務器目標類型：可用的 MCP 服務器選項
+export type MCPServerType = 'supabase' | 'graphiti' | 'hybrid';
+
+// 路由複雜度閾值配置：用於認知路由決策的配置參數
+export interface CognitiveRoutingThresholds {
+  system1MaxComplexity: number; // System 1 處理的最大複雜度評分
+  system2MinComplexity: number; // System 2 處理的最小複雜度評分
+  hybridComplexityRange: [number, number]; // 混合模式的複雜度範圍
+  episodicMemoryThreshold: number; // 啟用情節記憶的複雜度閾值
+  temporalContextKeywords: string[]; // 檢測時間上下文的關鍵詞列表
+}
+
+// 預設認知路由閾值：基於 DoTA-RAG framework 和學術研究的建議值
+export const DefaultCognitiveRoutingThresholds: CognitiveRoutingThresholds = {
+  system1MaxComplexity: 25, // 低複雜度任務 → Supabase (System 1)
+  system2MinComplexity: 50, // 高複雜度任務 → Graphiti (System 2)
+  hybridComplexityRange: [25, 50], // 中等複雜度 → 混合模式
+  episodicMemoryThreshold: 60, // 複雜度 > 60 時啟用情節記憶
+  temporalContextKeywords: [
+    'temporal', 'time', 'sequence', 'history', 'memory', 'context', 
+    'knowledge', 'learning', 'experience', 'past', 'future', 'timeline'
+  ],
+};
+
 // Prover-Estimator 辯論評分介面
 export interface DebateScoreBreakdown {
   proverScore: number; // 支持方評分 (0-100)
