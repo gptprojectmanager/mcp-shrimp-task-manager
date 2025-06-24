@@ -43,10 +43,12 @@ export class CognitiveRouter {
     let complexityScore = 0;
     
     // Description length scoring (40% weight)
-    if (descriptionLength < this.supabaseThreshold) {
+    if (descriptionLength < 200) {
       complexityScore += 10;
+    } else if (descriptionLength < 500) {
+      complexityScore += 25;
     } else if (descriptionLength < this.graphitiThreshold) {
-      complexityScore += 30;
+      complexityScore += 35;
     } else {
       complexityScore += 40;
     }
@@ -67,16 +69,29 @@ export class CognitiveRouter {
       complexityScore += 10;
     }
 
-    // Temporal context indicators (10% weight)
-    const temporalKeywords = ['temporal', 'time', 'sequence', 'history', 'memory', 'context', 'knowledge'];
-    const hasTemporalContext = temporalKeywords.some(keyword => 
+    // Temporal context indicators (15% weight) - Enhanced detection
+    const temporalKeywords = ['temporal', 'time', 'sequence', 'history', 'memory', 'context', 'knowledge', 'episodic', 'sophisticated', 'coordination', 'architecture', 'integration'];
+    const complexityKeywords = ['complex', 'multiple', 'extensive', 'sophisticated', 'advanced', 'comprehensive'];
+    
+    const temporalMatches = temporalKeywords.filter(keyword => 
       task.description.toLowerCase().includes(keyword) || 
       (task.notes && task.notes.toLowerCase().includes(keyword))
-    );
+    ).length;
     
-    if (hasTemporalContext) {
-      complexityScore += 10;
+    const complexityMatches = complexityKeywords.filter(keyword =>
+      task.description.toLowerCase().includes(keyword) || 
+      (task.notes && task.notes.toLowerCase().includes(keyword))
+    ).length;
+    
+    // Boost score for temporal/complexity keywords
+    if (temporalMatches > 0) {
+      complexityScore += Math.min(15, temporalMatches * 5);
     }
+    if (complexityMatches > 0) {
+      complexityScore += Math.min(10, complexityMatches * 3);
+    }
+    
+    const hasTemporalContext = temporalMatches > 0;
 
     // Determine complexity level
     let level: TaskComplexityLevel;
