@@ -11,6 +11,26 @@ import { MCPIntegrationLayer } from './mcpIntegration.js';
 import { RoutingPerformanceMonitor, routingPerformanceMonitor } from './routingMetrics.js';
 
 /**
+ * RACE Framework Interfaces - Based on DeepResearch Bench (arxiv:2506.11763)
+ * Multi-dimensional cognitive complexity assessment
+ */
+interface RACEAssessment {
+  comprehensiveness: number;      // Coverage breadth and depth (0-10)
+  insightDepth: number;          // Analysis complexity required (0-10)
+  instructionComplexity: number; // Task requirement complexity (0-10)
+  readabilityRequirement: number; // Output organization needs (0-10)
+  totalScore: number;            // Weighted total (0-40)
+  weights: RACEWeights;          // Dynamic weights used
+}
+
+interface RACEWeights {
+  comprehensiveness: number;     // Weight for comprehensiveness dimension
+  depth: number;                // Weight for depth dimension
+  instruction: number;          // Weight for instruction complexity
+  readability: number;          // Weight for readability requirements
+}
+
+/**
  * CognitiveRouter: Core cognitive routing system implementing System 1/System 2 architecture
  * Routes tasks between Supabase MCP (System 1 - fast) and Graphiti MCP (System 2 - deliberative)
  * Based on DoTA-RAG framework and academic research patterns
@@ -42,16 +62,10 @@ export class CognitiveRouter {
     // Calculate complexity score (0-100)
     let complexityScore = 0;
     
-    // Description length scoring (40% weight)
-    if (descriptionLength < 200) {
-      complexityScore += 10;
-    } else if (descriptionLength < 500) {
-      complexityScore += 25;
-    } else if (descriptionLength < this.graphitiThreshold) {
-      complexityScore += 35;
-    } else {
-      complexityScore += 40;
-    }
+    // RACE Framework: Multi-dimensional cognitive assessment (40% weight)
+    // Replaces hardcoded character counting with academic research-based evaluation
+    const raceAssessment = this.calculateRACEComplexity(task);
+    complexityScore += raceAssessment.totalScore;
 
     // Dependencies scoring (30% weight)
     if (dependenciesCount < this.dependencyThresholdMedium) {
@@ -315,6 +329,208 @@ export class CognitiveRouter {
   public async logPerformanceMetrics() {
     const metrics = this.performanceMonitor.generatePerformanceReport();
     return await this.performanceMonitor.logToSupabase(metrics);
+  }
+
+  /**
+   * RACE Framework Implementation: Multi-dimensional cognitive complexity assessment
+   * Based on academic research (arxiv:2506.11763) - DeepResearch Bench methodology
+   * Replaces hardcoded character counting with research-validated assessment
+   */
+  private calculateRACEComplexity(task: Task): RACEAssessment {
+    // 1. Comprehensiveness: Coverage breadth and depth required
+    const comprehensiveness = this.assessComprehensiveness(task);
+    
+    // 2. Insight/Depth: Analysis complexity and cognitive load required
+    const insightDepth = this.assessRequiredDepth(task);
+    
+    // 3. Instruction-Following: Task requirement complexity
+    const instructionComplexity = this.assessInstructionComplexity(task);
+    
+    // 4. Readability: Output organization and presentation requirements
+    const readabilityRequirement = this.assessReadabilityRequirements(task);
+
+    // Dynamic weighting based on task characteristics
+    const weights = this.calculateDynamicWeights(task);
+    
+    const totalScore = Math.min(40, // Cap at 40 points (40% of total complexity score)
+      (comprehensiveness * weights.comprehensiveness +
+       insightDepth * weights.depth +
+       instructionComplexity * weights.instruction +
+       readabilityRequirement * weights.readability)
+    );
+
+    return {
+      comprehensiveness,
+      insightDepth,
+      instructionComplexity,
+      readabilityRequirement,
+      totalScore,
+      weights
+    };
+  }
+
+  /**
+   * Assess comprehensiveness requirements based on task scope and breadth
+   */
+  private assessComprehensiveness(task: Task): number {
+    let score = 0;
+    const description = task.description.toLowerCase();
+    const notes = task.notes?.toLowerCase() || '';
+    
+    // Scope indicators
+    const scopeKeywords = ['comprehensive', 'complete', 'extensive', 'thorough', 'all', 'entire', 'full'];
+    const scopeMatches = scopeKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Multi-domain indicators
+    const domainKeywords = ['multiple', 'various', 'different', 'several', 'many'];
+    const domainMatches = domainKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Base score from task structure
+    score += Math.min(5, task.dependencies.length * 0.5); // Dependencies indicate broader scope
+    score += Math.min(5, scopeMatches * 2); // Explicit scope requirements
+    score += Math.min(3, domainMatches * 1.5); // Multi-domain complexity
+    
+    return Math.min(10, score);
+  }
+
+  /**
+   * Assess depth and insight requirements based on cognitive complexity
+   */
+  private assessRequiredDepth(task: Task): number {
+    let score = 0;
+    const description = task.description.toLowerCase();
+    const notes = task.notes?.toLowerCase() || '';
+    
+    // Analytical depth indicators
+    const depthKeywords = ['analyze', 'evaluate', 'assess', 'investigate', 'research', 'deep', 'sophisticated'];
+    const depthMatches = depthKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Technical complexity indicators
+    const technicalKeywords = ['algorithm', 'architecture', 'framework', 'system', 'integration', 'optimization'];
+    const technicalMatches = technicalKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Reasoning complexity indicators
+    const reasoningKeywords = ['why', 'how', 'cause', 'effect', 'impact', 'consequence', 'reasoning'];
+    const reasoningMatches = reasoningKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    score += Math.min(4, depthMatches * 1.5);
+    score += Math.min(3, technicalMatches * 1);
+    score += Math.min(3, reasoningMatches * 1);
+    
+    return Math.min(10, score);
+  }
+
+  /**
+   * Assess instruction-following complexity based on task requirements
+   */
+  private assessInstructionComplexity(task: Task): number {
+    let score = 0;
+    const description = task.description.toLowerCase();
+    const notes = task.notes?.toLowerCase() || '';
+    
+    // Multi-step indicators
+    const stepKeywords = ['step', 'phase', 'stage', 'then', 'next', 'after', 'sequence'];
+    const stepMatches = stepKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Constraint indicators
+    const constraintKeywords = ['must', 'should', 'require', 'ensure', 'verify', 'validate', 'check'];
+    const constraintMatches = constraintKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Format/output requirements
+    const formatKeywords = ['format', 'structure', 'organize', 'document', 'report', 'output'];
+    const formatMatches = formatKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    score += Math.min(4, stepMatches * 1);
+    score += Math.min(3, constraintMatches * 0.5);
+    score += Math.min(3, formatMatches * 1);
+    
+    return Math.min(10, score);
+  }
+
+  /**
+   * Assess readability and presentation requirements
+   */
+  private assessReadabilityRequirements(task: Task): number {
+    let score = 0;
+    const description = task.description.toLowerCase();
+    const notes = task.notes?.toLowerCase() || '';
+    
+    // Presentation indicators
+    const presentationKeywords = ['clear', 'readable', 'organized', 'structured', 'formatted', 'presentation'];
+    const presentationMatches = presentationKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Documentation indicators
+    const docKeywords = ['document', 'explain', 'describe', 'summary', 'report', 'guide'];
+    const docMatches = docKeywords.filter(keyword => 
+      description.includes(keyword) || notes.includes(keyword)
+    ).length;
+    
+    // Base score from task complexity (more complex tasks need better organization)
+    const baseComplexity = Math.min(3, (task.description.length / 200) + task.dependencies.length * 0.5);
+    
+    score += Math.min(3, presentationMatches * 1.5);
+    score += Math.min(4, docMatches * 1);
+    score += Math.min(3, baseComplexity);
+    
+    return Math.min(10, score);
+  }
+
+  /**
+   * Calculate dynamic weights based on task characteristics
+   */
+  private calculateDynamicWeights(task: Task): RACEWeights {
+    const description = task.description.toLowerCase();
+    const notes = task.notes?.toLowerCase() || '';
+    
+    // Default weights
+    let weights = {
+      comprehensiveness: 0.3,
+      depth: 0.3,
+      instruction: 0.25,
+      readability: 0.15
+    };
+    
+    // Adjust based on task type indicators
+    if (description.includes('research') || description.includes('investigate')) {
+      weights.comprehensiveness += 0.1;
+      weights.depth += 0.1;
+      weights.instruction -= 0.1;
+      weights.readability -= 0.1;
+    }
+    
+    if (description.includes('implement') || description.includes('code') || description.includes('develop')) {
+      weights.instruction += 0.15;
+      weights.depth += 0.05;
+      weights.comprehensiveness -= 0.1;
+      weights.readability -= 0.1;
+    }
+    
+    if (description.includes('document') || description.includes('explain') || description.includes('guide')) {
+      weights.readability += 0.2;
+      weights.instruction += 0.05;
+      weights.comprehensiveness -= 0.1;
+      weights.depth -= 0.15;
+    }
+    
+    return weights;
   }
 }
 
