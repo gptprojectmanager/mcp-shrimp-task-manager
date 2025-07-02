@@ -206,6 +206,7 @@ export async function updateTaskWithDebateResults(
   metadata: TaskCompletionMetadata
 ): Promise<Task | null> {
   return await updateTask(taskId, { 
+    status: TaskStatus.COMPLETED,  // 🔧 FIX: Set status to completed
     summary, 
     completionMetadata: metadata,
     completedAt: new Date()
